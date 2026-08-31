@@ -50,6 +50,9 @@ Git tarafından yok sayılır; örnek yapı `.env.example` dosyasındadır.
 - Avatar tıklaması erişilebilir menüyü, sağ tık ayarları açar
 
 Yazılı sohbet bulunmaz. `Su içtim`, `rapor` ve genel sohbet sesle kullanılabilir.
+`2 bardak su içtim` ve `bugün kaç bardak su içtim` gibi doğal komutlar da yerel
+olarak işlenir. Son 12 konuşma mesajı kısa dönem bağlam olarak kullanılır; konuşma
+geçmişi `%APPDATA%\Memocan\conversations.md` dosyasında yerel olarak arşivlenir.
 Sesli yanıtlar kapalıyken süre hatırlatmaları sistem bip sesiyle verilir. Ayarlardan
 Türkçe/İngilizce, sürekli uyandırma dinlemesi ve oturum açılışında başlatma seçilebilir.
 

@@ -1,5 +1,5 @@
 from __future__ import annotations
-import ctypes, logging, threading
+import ctypes, logging, re, threading
 import wx
 from autostart import set_startup
 from config import load_settings, save_settings
@@ -7,6 +7,7 @@ from hotkeys import HotkeyManager
 from i18n import tr
 from llm import LLMClient
 from storage import StatsStore
+from tracker import WorkTimer
 from voice import Voice
 
 log = logging.getLogger("memocan.app")
@@ -40,6 +41,7 @@ class MemocanApp:
         self.settings, self.stats = load_settings(), StatsStore(); self.llm = LLMClient(self.settings)
         self.voice = Voice(self.settings.voice_enabled, self.settings.language, self.settings.microphone_index)
         self.listening, self.closing, self.active_session, self.reminded = False, False, 0, False
+        self.work_timer = WorkTimer(self.settings.break_minutes)
         self.manual_voice = threading.Event(); self.wx_app = wx.App(False)
         self.frame = wx.Frame(None, title="Memocan", size=(120, 120), style=wx.FRAME_NO_TASKBAR | wx.STAY_ON_TOP | wx.BORDER_NONE)
         panel = wx.Panel(self.frame); panel.SetBackgroundColour("#4f8cff")
@@ -82,22 +84,38 @@ class MemocanApp:
 
     def _answer(self, message):
         low = message.casefold().strip()
-        if low in {"su", "su içtim", "su ictim", "water", "i drank water"}: return tr(self.settings.language, "water", count=self.stats.add_water())
-        if low in {"rapor", "report", "haftalık rapor", "weekly report"}: return self._report_text()
-        return self.llm.chat(message, str(self.stats.weekly()))
+        history = self.stats.recent_conversation(12)
+        number_words = {"bir": 1, "iki": 2, "üç": 3, "uc": 3, "dört": 4, "dort": 4, "beş": 5, "bes": 5,
+                        "altı": 6, "alti": 6, "yedi": 7, "sekiz": 8, "dokuz": 9, "on": 10}
+        water_query = re.search(r"(kaç|ne kadar).*(su|bardak)|(su|bardak).*(kaç|ne kadar)", low)
+        water_log = re.search(r"(?:(\d+|bir|iki|üç|uc|dört|dort|beş|bes|altı|alti|yedi|sekiz|dokuz|on)\s*)?(?:bardak|şişe|sise)?\s*su\s*(?:içtim|ictim|içiyorum|içerim|drank)", low)
+        if water_query:
+            answer = tr(self.settings.language, "water_total", count=self.stats.today_water())
+        elif water_log:
+            raw = water_log.group(1); count = int(raw) if raw and raw.isdigit() else number_words.get(raw or "bir", 1)
+            answer = tr(self.settings.language, "water", count=self.stats.add_water(count))
+        elif low in {"rapor", "report", "haftalık rapor", "weekly report"}:
+            answer = self._report_text()
+        else:
+            answer = self.llm.chat(message, history)
+        self.stats.add_conversation("user", message); self.stats.add_conversation("assistant", answer)
+        return answer
 
     def _report_text(self):
         weekly = self.stats.weekly(); return tr(self.settings.language, "report_text", hours=weekly["active_seconds"] // 3600, water=weekly["water_count"])
 
     def _tick(self, _event=None):
         idle = idle_seconds()
-        if idle < self.settings.idle_seconds:
+        active = idle < self.settings.idle_seconds
+        if active:
             self.active_session += 1
-            if self.settings.reminder_enabled and self.active_session >= self.settings.break_minutes * 60 and not self.reminded:
-                self.reminded = True; threading.Thread(target=lambda: self.voice.alert(tr(self.settings.language, "break")), daemon=True).start()
+            if self.settings.reminder_enabled and self.work_timer.advance(True):
+                log.info("Break reminder triggered after %s active seconds", self.work_timer.threshold)
+                threading.Thread(target=lambda: self.voice.alert(tr(self.settings.language, "break")), daemon=True).start()
         elif self.active_session: self.stats.add_active(self.active_session, idle); self.active_session, self.reminded = 0, False
 
     def _accessible_menu(self):
+        if self.menu_frame and self.menu_frame.IsShown(): self.menu_frame.Hide(); return
         log.info("Accessible menu opened"); self.voice.speak(tr(self.settings.language, "menu"), force=True, wait=False)
         if self.menu_frame: self.menu_frame.Show(); self.menu_frame.Raise(); self.menu_buttons[0].SetFocus(); return
         frame = wx.Frame(self.frame, title=tr(self.settings.language, "menu"), size=(500, 420), style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
@@ -108,7 +126,8 @@ class MemocanApp:
                  (tr(self.settings.language, "settings"), self._settings_window), (tr(self.settings.language, "quit"), self._quit)]
         self.menu_buttons = []
         for label, callback in specs:
-            button = wx.Button(panel, label=label, size=(-1, 50), name=label); button.SetToolTip(label); button.Bind(wx.EVT_BUTTON, lambda event, cb=callback: cb())
+            button = wx.Button(panel, label=label, size=(-1, 50), name=label); button.SetToolTip(label)
+            button.Bind(wx.EVT_BUTTON, lambda event, cb=callback: (self.menu_frame.Hide(), cb()))
             make_accessible(button)
             layout.Add(button, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 18); self.menu_buttons.append(button)
         panel.SetSizer(layout); frame.Bind(wx.EVT_CLOSE, lambda event: frame.Hide()); self.menu_frame = frame; frame.Show(); frame.Raise(); self.menu_buttons[0].SetFocus()
@@ -128,6 +147,7 @@ class MemocanApp:
         def do_save(_):
             self.settings.language, self.settings.avatar = language.GetStringSelection(), avatar.GetStringSelection(); self.settings.break_minutes = minutes.GetValue()
             self.settings.voice_enabled, self.settings.listening_enabled, self.settings.startup_enabled = voice.GetValue(), wake.GetValue(), startup.GetValue(); self.settings.microphone_index = microphone.GetSelection()
+            self.work_timer.set_minutes(self.settings.break_minutes)
             self.voice.enabled, self.voice.language, self.voice.microphone_index = self.settings.voice_enabled, self.settings.language, self.settings.microphone_index
             self.avatar_button.SetLabel(AVATARS.get(self.settings.avatar, "🤖")); save_settings(self.settings); set_startup(self.settings.startup_enabled); dialog.EndModal(wx.ID_OK)
             threading.Thread(target=lambda: self.voice.alert(tr(self.settings.language, "saved")), daemon=True).start()
