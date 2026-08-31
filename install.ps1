@@ -1,7 +1,12 @@
 $ErrorActionPreference = "Stop"
 $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceExe = Join-Path $ProjectDir "dist\Memocan.exe"
-if (-not (Test-Path -LiteralPath $SourceExe)) { & (Join-Path $ProjectDir "build.ps1") }
+$PortableExe = Join-Path $ProjectDir "Memocan.exe"
+if ((-not (Test-Path -LiteralPath $SourceExe)) -and (Test-Path -LiteralPath $PortableExe)) { $SourceExe = $PortableExe }
+if (-not (Test-Path -LiteralPath $SourceExe)) {
+    & (Join-Path $ProjectDir "build.ps1")
+    $SourceExe = Join-Path $ProjectDir "dist\Memocan.exe"
+}
 
 $InstallDir = Join-Path $env:LOCALAPPDATA "Memocan"
 $ConfigDir = Join-Path $env:APPDATA "Memocan"
