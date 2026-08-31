@@ -63,6 +63,17 @@ Windows paketi:
 .\dist\Memocan.exe
 ```
 
+Windows'ta tek tık yerel kurulum için:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Bu işlem uygulamayı `%LOCALAPPDATA%\Memocan` altına kurar, masaüstü ve Başlat
+menüsü kısayollarını oluşturur ve kullanıcı oturum açtığında otomatik başlatır.
+Türkçe seçiliyken Windows'un Microsoft Tolga sesi, İngilizce seçiliyken İngilizce
+SAPI sesi kullanılır.
+
 macOS ve Linux kendi işletim sistemleri üzerinde `./build.sh` ile paketlenir.
 `.github/workflows/build.yml`, üç işletim sistemi için ayrı paket üretir; PyInstaller
 çapraz derleyici olmadığı için her hedef kendi runner'ında oluşturulur. Paketlenmiş

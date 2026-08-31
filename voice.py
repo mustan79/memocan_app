@@ -1,5 +1,7 @@
 from __future__ import annotations
 import logging
+import asyncio
+import platform
 import queue
 import threading
 from config import config_dir
@@ -18,7 +20,7 @@ class Voice:
         self._ready.wait(5)
 
     def _speech_loop(self):
-        engine = None
+        engine, winrt_synth, winrt_voice = None, None, None
         try:
             import pyttsx3
             engine = pyttsx3.init()
@@ -27,13 +29,34 @@ class Voice:
             log.info("TTS engine initialized")
         except Exception:
             log.exception("TTS initialization failed")
+        if platform.system() == "Windows":
+            try:
+                from winrt.windows.media.speechsynthesis import SpeechSynthesizer
+                winrt_synth = SpeechSynthesizer()
+                winrt_voice = next((v for v in SpeechSynthesizer.all_voices if v.language.casefold().startswith("tr")), None)
+                log.info("Windows Turkish voice: %s", winrt_voice.display_name if winrt_voice else "not found")
+            except Exception:
+                log.exception("Windows modern TTS initialization failed")
         self._ready.set()
         while True:
             item = self._queue.get()
             if item is None: return
-            text, done, result = item
+            text, language, done, result = item
             try:
-                if engine:
+                if language == "tr" and winrt_synth and winrt_voice:
+                    import winsound
+                    from winrt.windows.storage.streams import DataReader
+                    winrt_synth.voice = winrt_voice
+                    async def synthesize():
+                        stream = await winrt_synth.synthesize_text_to_stream_async(text)
+                        reader = DataReader(stream); await reader.load_async(stream.size)
+                        data = bytearray(stream.size); reader.read_bytes(data); return data
+                    data = asyncio.run(synthesize())
+                    winsound.PlaySound(data, winsound.SND_MEMORY); result.append(True)
+                elif engine:
+                    voices = engine.getProperty("voices")
+                    preferred = next((v for v in voices if language in " ".join(getattr(v, "languages", [])).casefold()), None)
+                    if preferred: engine.setProperty("voice", preferred.id)
                     engine.stop(); engine.say(text); engine.runAndWait(); result.append(True)
                 else: result.append(False)
             except Exception:
@@ -48,7 +71,7 @@ class Voice:
     def speak(self, text: str, force=False, wait=True):
         if not ((self.enabled or force) and text): return False
         done, result = threading.Event(), []
-        self._queue.put((text, done, result))
+        self._queue.put((text, self.language, done, result))
         if not wait: return True
         done.wait(20)
         return bool(result and result[0])

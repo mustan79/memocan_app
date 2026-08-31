@@ -5,7 +5,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=["pyttsx3.drivers.sapi5", "speech_recognition", "pyaudio", "pynput"],
+    hiddenimports=["pyttsx3.drivers.sapi5", "speech_recognition", "pyaudio", "pynput",
+                   "winrt.windows.foundation", "winrt.windows.foundation.collections",
+                   "winrt.windows.media.speechsynthesis", "winrt.windows.storage.streams", "wx"],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False,
 )
 pyz = PYZ(a.pure)

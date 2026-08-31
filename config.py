@@ -11,6 +11,8 @@ except ImportError:
 if load_dotenv:
     env_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
     load_dotenv(env_dir / ".env")
+    user_env_dir = Path(os.environ.get("APPDATA") or (Path.home() / ".config")) / "Memocan"
+    load_dotenv(user_env_dir / ".env", override=True)
 
 @dataclass
 class Settings:
