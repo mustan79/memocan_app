@@ -1,0 +1,25 @@
+name: Build Memocan
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Linux system dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev python3-tk
+      - run: python -m pip install -r requirements-build.txt
+      - run: python -m PyInstaller --noconfirm --clean Memocan.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Memocan-${{ runner.os }}
+          path: dist/*

@@ -1,0 +1,16 @@
+{
+  "avatar": "robot",
+  "break_minutes": 25,
+  "reminder_enabled": true,
+  "voice_enabled": true,
+  "listening_enabled": true,
+  "language": "tr",
+  "startup_enabled": false,
+  "microphone_index": -1,
+  "notifications_enabled": true,
+  "provider": "ollama_cloud",
+  "model": "gemma4:31b-cloud",
+  "base_url": "https://ollama.com/v1",
+  "api_key": "",
+  "idle_seconds": 300
+}
