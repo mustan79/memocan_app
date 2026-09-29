@@ -1,86 +1,78 @@
-# Memocan Desktop Companion
+# Memocan — masaüstü çalışma arkadaşın
 
-Memocan, düşük kaynak tüketimli bir masaüstü çalışma arkadaşıdır. Sürüklenebilir
-avatar; aktif bilgisayar kullanımını, molaları ve su kayıtlarını yerel SQLite
-veritabanında tutar.
+Windows için erişilebilir masaüstü asistanı: su takibi, günlük/haftalık bilgisayar kullanım metrikleri, mola hatırlatıcısı ve isteğe bağlı sesli AI sohbeti.
 
-## Ön demo
+## Hızlı kurulum — Python gerekmez
 
-- Windows aktivite/boşta kalma takibi
-- 25 dakika sonunda mola hatırlatması
-- Su kaydı ve 7 günlük özet
-- Robot, kedi, baykuş ve ördek avatarları
-- OpenAI uyumlu Ollama Cloud, OpenRouter veya DeepSeek bağlantısı
-- İsteğe bağlı TTS ve mikrofon desteği
+1. [Son sürümden](https://github.com/mustan79/memocan_app/releases/latest) **Memocan-Windows.zip** dosyasını indir.
+2. ZIP'i bir klasöre çıkar.
+3. **Install-Memocan.bat** dosyasını çift tıkla. Uygulama kullanıcı hesabına kurulur; masaüstü/Başlat menüsü kısayolları oluşturulur.
+4. Kurmadan denemek için **Memocan.exe** dosyasını aç.
 
-## Kurulum ve çalıştırma
+Paket dijital olarak imzalanmamıştır; Windows yayıncıyı doğrulayamayabilir. Yalnız bu deponun Releases sayfasından indirin. `SHA256SUMS.txt` ile indirdiğiniz ZIP'in özetini karşılaştırabilirsiniz.
 
-PowerShell'de:
+## Su ve metrikler
+
+- Avatara tıkla veya **Ctrl+Alt+M**: ana menü.
+- **Su içtim (+1 bardak)** / **Drink water (+1 glass)**: her basış tam bir bardak ekler. Menü açık kalır ve günlük toplam güncellenir.
+- **Metrikler** / **Metrics**: ilk açılışta **bu hafta ve bugün** seçilidir.
+- Hafta açılır listesinden geçmiş haftaları, tarih listesinden o haftanın gününü seç.
+- Gün ve hafta için **aktif kullanım**, **bilgisayarın izlenen açık/uyanık süresi** ve **bardak sayısı** ayrı gösterilir.
+- **Yenile** en yeni kayıtları getirir. Haftalar Pazartesi–Pazar arasıdır.
+
+**Ölçüm kapsamı:** Bilgisayar süresi Memocan çalışırken tutulur; Windows uyku/hazırda bekletme süresi sayılmaz. Uygulama kapalıyken ve kurulmadan önce geçen süre geri üretilemez. Tam gün takibi için Ayarlar'dan oturum açılışında başlatmayı etkinleştirin. Aktif kullanım varsayılan olarak son 5 dakika içinde klavye/fare girdisi olmasıdır; bu, kişinin üretkenliğinin ölçümü değildir. Eski sürümlerin su/aktif kayıtları korunur; geçmiş bilgisayar açık süresi bulunmaz. Süreler 15 saniyede bir, metrik açılırken ve normal çıkışta kaydedilir; zorla kapanmada son birkaç saniye kaybolabilir.
+
+Su, metrikler ve mola hatırlatmaları **API anahtarı, üyelik veya internet gerektirmez**. Bardak kaydı adet olarak tutulur; litreye çevrilmez.
+
+## Ses, dil ve erişilebilirlik
+
+- **Ctrl+Alt+V**: sesli konuşmayı başlatır; dinleme sürerken tekrar basılırsa sesi kapatır.
+- İsteğe bağlı “Hey Memo” / “Hey Memocan” uyandırması.
+- “2 bardak su içtim” ve “bugün kaç bardak su içtim” komutları.
+- Ayarlar'dan Türkçe/İngilizce, avatar, mola süresi, mikrofon ve otomatik başlangıç.
+- Menü düğmeleri ve metrik seçimleri klavyeyle kullanılabilir; yerel wxPython kontrolleri ekran okuyucu erişimi sağlar.
+
+## İsteğe bağlı AI sohbeti
+
+`.env.example` dosyasını `%APPDATA%\Memocan\.env` olarak kopyalayıp **kendi sağlayıcı anahtarını** ekle. Ollama Cloud, OpenRouter veya DeepSeek kullanılabilir. Örnek:
+
+```dotenv
+MEMOCAN_PROVIDER=openrouter
+MEMOCAN_MODEL=openrouter/auto
+OPENROUTER_API_KEY=kendi_anahtariniz
+```
+
+Sağlayıcı ücretleri sana aittir. Yerel su/rapor komutları haricindeki sohbet, seçilen sağlayıcıya gönderilir. Ses tanıma mevcut uygulamada çevrimiçi konuşma tanıma hizmeti kullanabilir; çevrimdışı yalnızca düğmeler/metrikler için garanti edilir. Mikrofon dinlemesini Ayarlar'dan kapatabilirsin.
+
+Kişisel anahtarlar dağıtım paketine dahil edilmez. Sohbet geçmişi `%APPDATA%\Memocan\conversations.md`, istatistikler `stats.sqlite3`, ayarlar `config.json` dosyasında yerel tutulur. Bu dosyaları paylaşırken kişisel içerik içerebileceğini unutma.
+
+## Geliştirici kurulumu
+
+Windows, Python 3.12 ve Git:
 
 ```powershell
-cd D:\mt_proje\memocan_app
-.\setup.ps1
+git clone https://github.com/mustan79/memocan_app.git
+cd memocan_app
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 .\.venv\Scripts\python.exe main.py
 ```
 
-PowerShell betik çalıştırmayı engellerse:
+Test ve Windows paketi:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\package.ps1
 ```
 
-Uygulama `.env` dosyasını otomatik yükler. Sağlayıcı örneği:
+Çıktı: `dist\Memocan-Windows.zip`. Paket; uygulama, tek tık kurulum dosyası, README, lisans ve boş anahtar şablonu içerir. `.env`, kullanıcı verileri, konuşmalar ve SQLite dosyaları eklenmez.
 
-```dotenv
-MEMOCAN_PROVIDER=ollama_cloud
-MEMOCAN_MODEL=gemma4:31b-cloud
-OLLAMA_API_KEY=...
-```
+Bu sürümün dağıtım/test hedefi **Windows x64**'tür. macOS/Linux desteklenmiş dağıtım olarak sunulmaz; özellikle aktiflik takibi Windows API'lerine dayanır.
 
-`MEMOCAN_PROVIDER` için `openrouter` veya `deepseek` de kullanılabilir. İlgili
-anahtarlar sırasıyla `OPENROUTER_API_KEY` ve `DEEPSEEK_API_KEY` olur. `.env`
-Git tarafından yok sayılır; örnek yapı `.env.example` dosyasındadır.
+## Güncelleme ve kaldırma
 
-## Erişilebilir kullanım
+Güncellemeden önce menüden Memocan'ı kapat; yeni ZIP'i çıkarıp kurulum dosyasını çalıştır. `%APPDATA%\Memocan` altındaki kayıtların korunur. Kaldırırken önce otomatik başlangıcı Ayarlar'dan kapat, uygulamadan çık, `%LOCALAPPDATA%\Memocan` klasörünü ve kısayollarını sil. Kullanım geçmişini de kaldırmak istersen `%APPDATA%\Memocan` klasörünü ayrıca sil.
 
-- `Ctrl+Alt+M`: ekran okuyucuyla gezilebilen yerel Memocan menüsü
-- `Ctrl+Alt+V`: ses kapalıysa açar ve sesli konuşmayı başlatır; dinleme sürerken
-  tekrar basılırsa sesi kapatır
-- `Hey Memo` veya `Hey Memocan`: sesli konuşmayı başlatır
-- Avatar tıklaması erişilebilir menüyü, sağ tık ayarları açar
+## Lisans
 
-Yazılı sohbet bulunmaz. `Su içtim`, `rapor` ve genel sohbet sesle kullanılabilir.
-`2 bardak su içtim` ve `bugün kaç bardak su içtim` gibi doğal komutlar da yerel
-olarak işlenir. Son 12 konuşma mesajı kısa dönem bağlam olarak kullanılır; konuşma
-geçmişi `%APPDATA%\Memocan\conversations.md` dosyasında yerel olarak arşivlenir.
-Sesli yanıtlar kapalıyken süre hatırlatmaları sistem bip sesiyle verilir. Ayarlardan
-Türkçe/İngilizce, sürekli uyandırma dinlemesi ve oturum açılışında başlatma seçilebilir.
-
-## Dağıtım
-
-Son kullanıcı için önerilen biçim, Python gerektirmeyen işletim sistemi paketidir.
-Windows paketi:
-
-```powershell
-.\build.ps1
-.\dist\Memocan.exe
-```
-
-Windows'ta tek tık yerel kurulum için:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-Bu işlem uygulamayı `%LOCALAPPDATA%\Memocan` altına kurar, masaüstü ve Başlat
-menüsü kısayollarını oluşturur ve kullanıcı oturum açtığında otomatik başlatır.
-Türkçe seçiliyken Windows'un Microsoft Tolga sesi, İngilizce seçiliyken İngilizce
-SAPI sesi kullanılır.
-
-macOS ve Linux kendi işletim sistemleri üzerinde `./build.sh` ile paketlenir.
-`.github/workflows/build.yml`, üç işletim sistemi için ayrı paket üretir; PyInstaller
-çapraz derleyici olmadığı için her hedef kendi runner'ında oluşturulur. Paketlenmiş
-uygulamada `.env`, çalıştırılabilir dosyayla aynı klasöre konur.
-
-İstatistikler `%APPDATA%\Memocan\stats.sqlite3`, kullanıcı ayarları ise
-`%APPDATA%\Memocan\config.json` altında yerel olarak saklanır.
+[MIT](LICENSE). Hata bildirimi ve öneriler için [Issues](https://github.com/mustan79/memocan_app/issues).

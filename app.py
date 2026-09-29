@@ -6,8 +6,9 @@ from config import load_settings, save_settings
 from hotkeys import HotkeyManager
 from i18n import tr
 from llm import LLMClient
+from metrics import MetricsDialog
 from storage import StatsStore
-from tracker import WorkTimer
+from tracker import WorkTimer, UsageTracker
 from voice import Voice
 
 log = logging.getLogger("memocan.app")
@@ -33,7 +34,7 @@ def idle_seconds() -> int:
     if not hasattr(ctypes, "windll"): return 0
     class LASTINPUTINFO(ctypes.Structure): _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
     info = LASTINPUTINFO(ctypes.sizeof(LASTINPUTINFO), 0)
-    if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)): return max(0, (ctypes.windll.kernel32.GetTickCount() - info.dwTime) // 1000)
+    if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)): return ((ctypes.windll.kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) // 1000
     return 0
 
 class MemocanApp:
@@ -42,6 +43,7 @@ class MemocanApp:
         self.voice = Voice(self.settings.voice_enabled, self.settings.language, self.settings.microphone_index)
         self.listening, self.closing, self.active_session, self.reminded = False, False, 0, False
         self.work_timer = WorkTimer(self.settings.break_minutes)
+        self.usage = UsageTracker(self.stats)
         self.manual_voice = threading.Event(); self.wx_app = wx.App(False)
         self.frame = wx.Frame(None, title="Memocan", size=(120, 120), style=wx.FRAME_NO_TASKBAR | wx.STAY_ON_TOP | wx.BORDER_NONE)
         panel = wx.Panel(self.frame); panel.SetBackgroundColour("#4f8cff")
@@ -107,29 +109,43 @@ class MemocanApp:
     def _tick(self, _event=None):
         idle = idle_seconds()
         active = idle < self.settings.idle_seconds
+        seconds = self.usage.sample(active)
         if active:
-            self.active_session += 1
-            if self.settings.reminder_enabled and self.work_timer.advance(True):
+            if self.settings.reminder_enabled and self.work_timer.advance(True, seconds):
                 log.info("Break reminder triggered after %s active seconds", self.work_timer.threshold)
                 threading.Thread(target=lambda: self.voice.alert(tr(self.settings.language, "break")), daemon=True).start()
-        elif self.active_session: self.stats.add_active(self.active_session, idle); self.active_session, self.reminded = 0, False
+
+    def _drink_water(self):
+        message = tr(self.settings.language, "water", count=self.stats.add_water(1))
+        self.water_status.SetLabel(message)
+        self.voice.speak(message, wait=False)
+
+    def _metrics_window(self):
+        self.usage.flush()
+        dialog = MetricsDialog(self.frame, self.stats, self.settings.language, self.usage.flush)
+        dialog.ShowModal()
+        dialog.Destroy()
 
     def _accessible_menu(self):
         if self.menu_frame and self.menu_frame.IsShown(): self.menu_frame.Hide(); return
         log.info("Accessible menu opened"); self.voice.speak(tr(self.settings.language, "menu"), force=True, wait=False)
         if self.menu_frame: self.menu_frame.Show(); self.menu_frame.Raise(); self.menu_buttons[0].SetFocus(); return
-        frame = wx.Frame(self.frame, title=tr(self.settings.language, "menu"), size=(500, 420), style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
+        frame = wx.Frame(self.frame, title=tr(self.settings.language, "menu"), size=(540, 590), style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP)
         panel = wx.Panel(frame); layout = wx.BoxSizer(wx.VERTICAL); heading = wx.StaticText(panel, label=tr(self.settings.language, "menu"))
         font = heading.GetFont(); font.SetPointSize(15); font.SetWeight(wx.FONTWEIGHT_BOLD); heading.SetFont(font); layout.Add(heading, 0, wx.ALL | wx.ALIGN_CENTER_HORIZONTAL, 18)
         specs = [(tr(self.settings.language, "talk") + " (Ctrl+Alt+V)", self._start_conversation),
+                 (tr(self.settings.language, "drink_water"), self._drink_water),
+                 (tr(self.settings.language, "metrics"), self._metrics_window),
                  (tr(self.settings.language, "report"), lambda: threading.Thread(target=lambda: self.voice.alert(self._report_text()), daemon=True).start()),
                  (tr(self.settings.language, "settings"), self._settings_window), (tr(self.settings.language, "quit"), self._quit)]
         self.menu_buttons = []
         for label, callback in specs:
             button = wx.Button(panel, label=label, size=(-1, 50), name=label); button.SetToolTip(label)
-            button.Bind(wx.EVT_BUTTON, lambda event, cb=callback: (self.menu_frame.Hide(), cb()))
+            button.Bind(wx.EVT_BUTTON, lambda event, cb=callback: (None if cb == self._drink_water else self.menu_frame.Hide(), cb()))
             make_accessible(button)
             layout.Add(button, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 18); self.menu_buttons.append(button)
+        self.water_status = wx.StaticText(panel, label=tr(self.settings.language, "water_total", count=self.stats.today_water()))
+        layout.Add(self.water_status, 0, wx.ALL | wx.EXPAND, 18)
         panel.SetSizer(layout); frame.Bind(wx.EVT_CLOSE, lambda event: frame.Hide()); self.menu_frame = frame; frame.Show(); frame.Raise(); self.menu_buttons[0].SetFocus()
 
     def _settings_window(self):
@@ -150,12 +166,14 @@ class MemocanApp:
             self.work_timer.set_minutes(self.settings.break_minutes)
             self.voice.enabled, self.voice.language, self.voice.microphone_index = self.settings.voice_enabled, self.settings.language, self.settings.microphone_index
             self.avatar_button.SetLabel(AVATARS.get(self.settings.avatar, "🤖")); save_settings(self.settings); set_startup(self.settings.startup_enabled); dialog.EndModal(wx.ID_OK)
+            if self.menu_frame:
+                self.menu_frame.Destroy(); self.menu_frame = None
             threading.Thread(target=lambda: self.voice.alert(tr(self.settings.language, "saved")), daemon=True).start()
         save.Bind(wx.EVT_BUTTON, do_save); panel.SetSizer(layout); dialog.ShowModal(); dialog.Destroy()
 
     def _quit(self):
         self.closing = True; self.timer.Stop()
-        if self.active_session: self.stats.add_active(self.active_session)
+        self.usage.flush()
         self.hotkeys.stop(); self.voice.close()
         if self.menu_frame: self.menu_frame.Destroy()
         self.frame.Destroy(); self.wx_app.ExitMainLoop()
